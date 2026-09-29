@@ -2,7 +2,7 @@ import type { RenderContext } from "../../types.js";
 import { isLimitReached } from "../../types.js";
 import type { MessageKey } from "../../i18n/types.js";
 import { shouldHideUsage } from "../../stdin.js";
-import { critical, label, getQuotaColor, quotaBar, RESET } from "../colors.js";
+import { critical, label, getQuotaColor, paceMarker, quotaBar, RESET } from "../colors.js";
 import { getAdaptiveBarWidth } from "../../utils/terminal.js";
 import { t } from "../../i18n/index.js";
 import {
@@ -11,9 +11,13 @@ import {
 } from "./label-align.js";
 import type { TimeFormatMode, UsageValueMode } from "../../config.js";
 import { formatResetTime, type WallClockOptions } from "../format-reset-time.js";
-
-const FIVE_HOUR_WINDOW_MS = 5 * 60 * 60 * 1000;
-const SEVEN_DAY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+import {
+  FIVE_HOUR_WINDOW_MS,
+  SEVEN_DAY_WINDOW_MS,
+  getUsagePace,
+  isPaceAlert,
+  type UsagePace,
+} from "../../usage-pace.js";
 
 export function renderUsageLine(
   ctx: RenderContext,
@@ -57,11 +61,14 @@ export function renderUsageLine(
   const usageCompact = display?.usageCompact ?? false;
   const usageValueMode = display?.usageValue ?? 'percent';
   const barWidthForScoped = getAdaptiveBarWidth();
+  const paceOf = (percent: number | null, resetAt: Date | null, windowMs: number): UsagePace | null =>
+    display?.usagePace === true ? getUsagePace(percent, resetAt, windowMs) : null;
+  const scopedPaces = scopedWindows.map((w) => paceOf(w.percent, w.resetAt, SEVEN_DAY_WINDOW_MS));
   const scopedSuffix = scopedWindows.length
     ? ' | ' + scopedWindows
-        .map((w) =>
+        .map((w, i) =>
           usageCompact
-            ? formatCompactWindowPart(w.label, w.percent, w.resetAt, SEVEN_DAY_WINDOW_MS, timeFormat, colors, usageValueMode, wallClockOpts)
+            ? formatCompactWindowPart(w.label, w.percent, w.resetAt, SEVEN_DAY_WINDOW_MS, timeFormat, colors, usageValueMode, wallClockOpts, scopedPaces[i])
             : formatUsageWindowPart({
                 label: w.label,
                 percent: w.percent,
@@ -76,6 +83,7 @@ export function renderUsageLine(
                 labelOptions,
                 usageValueMode,
                 wallClockOpts,
+                pace: scopedPaces[i],
               }),
         )
         .join(' | ')
@@ -101,24 +109,28 @@ export function renderUsageLine(
   const threshold = display?.usageThreshold ?? 0;
   const fiveHour = ctx.usageData.fiveHour;
   const sevenDay = ctx.usageData.sevenDay;
+  const fiveHourPace = paceOf(fiveHour, ctx.usageData.fiveHourResetAt, FIVE_HOUR_WINDOW_MS);
+  const sevenDayPace = paceOf(sevenDay, ctx.usageData.sevenDayResetAt, SEVEN_DAY_WINDOW_MS);
+  const paceAlert = [fiveHourPace, sevenDayPace, ...scopedPaces].some(isPaceAlert);
 
   const effectiveUsage = Math.max(
     fiveHour ?? 0,
     sevenDay ?? 0,
     ...scopedWindows.map((window) => window.percent ?? 0),
   );
-  if (effectiveUsage < threshold) {
+  if (effectiveUsage < threshold && !paceAlert) {
     return balanceLabel ? `${usageLabel} ${balanceLabel}` : null;
   }
 
   const sevenDayThreshold = display?.sevenDayThreshold ?? 80;
+  const showSevenDay = sevenDay !== null && (sevenDay >= sevenDayThreshold || isPaceAlert(sevenDayPace));
 
   if (usageCompact) {
     const fiveHourPart = fiveHour !== null
-      ? formatCompactWindowPart("5h", fiveHour, ctx.usageData.fiveHourResetAt, FIVE_HOUR_WINDOW_MS, timeFormat, colors, usageValueMode, wallClockOpts)
+      ? formatCompactWindowPart("5h", fiveHour, ctx.usageData.fiveHourResetAt, FIVE_HOUR_WINDOW_MS, timeFormat, colors, usageValueMode, wallClockOpts, fiveHourPace)
       : null;
-    const sevenDayPart = (sevenDay !== null && (fiveHour === null || sevenDay >= sevenDayThreshold))
-      ? formatCompactWindowPart("7d", sevenDay, ctx.usageData.sevenDayResetAt, SEVEN_DAY_WINDOW_MS, timeFormat, colors, usageValueMode, wallClockOpts)
+    const sevenDayPart = (sevenDay !== null && (fiveHour === null || showSevenDay))
+      ? formatCompactWindowPart("7d", sevenDay, ctx.usageData.sevenDayResetAt, SEVEN_DAY_WINDOW_MS, timeFormat, colors, usageValueMode, wallClockOpts, sevenDayPace)
       : null;
 
     if (fiveHourPart && sevenDayPart) {
@@ -158,6 +170,7 @@ export function renderUsageLine(
       labelOptions,
       usageValueMode,
       wallClockOpts,
+      pace: sevenDayPace,
     });
     return appendBalance(`${usageLabel} ${weeklyOnlyPart}${scopedSuffix}`, balanceLabel);
   }
@@ -174,9 +187,10 @@ export function renderUsageLine(
     showResetLabel,
     usageValueMode,
     wallClockOpts,
+    pace: fiveHourPace,
   });
 
-  if (sevenDay !== null && sevenDay >= sevenDayThreshold) {
+  if (showSevenDay) {
     const sevenDayPart = formatUsageWindowPart({
       label: t("label.weekly"),
       labelKey: "label.weekly",
@@ -192,6 +206,7 @@ export function renderUsageLine(
       labelOptions,
       usageValueMode,
       wallClockOpts,
+      pace: sevenDayPace,
     });
     return appendBalance(`${usageLabel} ${fiveHourPart} | ${sevenDayPart}${scopedSuffix}`, balanceLabel);
   }
@@ -212,8 +227,9 @@ function formatCompactWindowPart(
   colors?: RenderContext["config"]["colors"],
   usageValueMode: UsageValueMode = 'percent',
   wallClockOpts?: WallClockOptions,
+  pace: UsagePace | null = null,
 ): string {
-  const usageDisplay = formatUsagePercent(percent, colors, usageValueMode);
+  const usageDisplay = formatUsagePercent(percent, colors, usageValueMode, pace);
   const reset = formatWindowTime(resetAt, windowMs, timeFormat, wallClockOpts);
   const styledLabel = label(`${windowLabel}:`, colors);
   return reset
@@ -225,13 +241,14 @@ function formatUsagePercent(
   percent: number | null,
   colors?: RenderContext["config"]["colors"],
   mode: UsageValueMode = 'percent',
+  pace: UsagePace | null = null,
 ): string {
   if (percent === null) {
     return label("--", colors);
   }
-  const color = getQuotaColor(percent, colors);
+  const color = getQuotaColor(percent, colors, pace);
   const displayPercent = mode === 'remaining' ? Math.max(0, 100 - percent) : percent;
-  return `${color}${displayPercent}%${RESET}`;
+  return `${color}${displayPercent}%${RESET}${paceMarker(pace, colors)}`;
 }
 
 function formatUsageWindowPart({
@@ -249,6 +266,7 @@ function formatUsageWindowPart({
   labelOptions = {},
   usageValueMode = 'percent',
   wallClockOpts,
+  pace = null,
 }: {
   label: string;
   labelKey?: MessageKey;
@@ -264,8 +282,9 @@ function formatUsageWindowPart({
   labelOptions?: ProgressLabelInput;
   usageValueMode?: UsageValueMode;
   wallClockOpts?: WallClockOptions;
+  pace?: UsagePace | null;
 }): string {
-  const usageDisplay = formatUsagePercent(percent, colors, usageValueMode);
+  const usageDisplay = formatUsagePercent(percent, colors, usageValueMode, pace);
   const reset = formatWindowTime(resetAt, windowMs, timeFormat, wallClockOpts);
   const styledLabel = labelKey
     ? progressLabel(labelKey, colors, labelOptions)
@@ -281,8 +300,8 @@ function formatUsageWindowPart({
 
   if (usageBarEnabled) {
     const body = resetSuffix
-      ? `${quotaBar(percent ?? 0, barWidth, colors)} ${usageDisplay} ${resetSuffix}`
-      : `${quotaBar(percent ?? 0, barWidth, colors)} ${usageDisplay}`;
+      ? `${quotaBar(percent ?? 0, barWidth, colors, pace)} ${usageDisplay} ${resetSuffix}`
+      : `${quotaBar(percent ?? 0, barWidth, colors, pace)} ${usageDisplay}`;
     return forceLabel ? `${styledLabel} ${body}` : body;
   }
 
