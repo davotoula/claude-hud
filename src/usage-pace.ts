@@ -1,3 +1,6 @@
+import type { HudConfig } from './config.js';
+import type { ScopedUsageWindow, UsageData } from './types.js';
+
 export type UsagePace = 'normal' | 'warning' | 'critical';
 
 export const FIVE_HOUR_WINDOW_MS = 5 * 60 * 60 * 1000;
@@ -50,4 +53,45 @@ export function getUsagePace(
 /** True when pace should draw attention (amber or red). */
 export function isPaceAlert(pace: UsagePace | null): boolean {
   return pace === 'warning' || pace === 'critical';
+}
+
+/** Pace of every usage window, plus the display rules pace imposes. */
+export interface UsagePaces {
+  fiveHour: UsagePace | null;
+  sevenDay: UsagePace | null;
+  /** Parallel to the scoped windows passed in. */
+  scoped: Array<UsagePace | null>;
+  /** Some window is at amber/red pace: show usage despite `usageThreshold`. */
+  alert: boolean;
+  /** Show the weekly window: at/above `sevenDayThreshold`, or at amber/red pace. */
+  showSevenDay: boolean;
+}
+
+/**
+ * Grades every window's pace (all null unless `display.usagePace` is on) and
+ * resolves the visibility rules both usage renderers share.
+ */
+export function resolveUsagePaces(
+  usage: UsageData,
+  scopedWindows: ScopedUsageWindow[],
+  display: Partial<HudConfig['display']> | undefined,
+  now: number = Date.now(),
+): UsagePaces {
+  const enabled = display?.usagePace === true;
+  const paceOf = (percent: number | null, resetAt: Date | null, windowMs: number): UsagePace | null =>
+    enabled ? getUsagePace(percent, resetAt, windowMs, now) : null;
+
+  const fiveHour = paceOf(usage.fiveHour, usage.fiveHourResetAt, FIVE_HOUR_WINDOW_MS);
+  const sevenDay = paceOf(usage.sevenDay, usage.sevenDayResetAt, SEVEN_DAY_WINDOW_MS);
+  const scoped = scopedWindows.map((w) => paceOf(w.percent, w.resetAt, SEVEN_DAY_WINDOW_MS));
+  const sevenDayThreshold = display?.sevenDayThreshold ?? 80;
+
+  return {
+    fiveHour,
+    sevenDay,
+    scoped,
+    alert: [fiveHour, sevenDay, ...scoped].some(isPaceAlert),
+    showSevenDay: usage.sevenDay !== null
+      && (usage.sevenDay >= sevenDayThreshold || isPaceAlert(sevenDay)),
+  };
 }

@@ -1,5 +1,5 @@
-import type { HudColorName, HudColorValue, HudColorOverrides } from '../config.js';
-import type { UsagePace } from '../usage-pace.js';
+import type { HudColorName, HudColorValue, HudColorOverrides, UsageValueMode } from '../config.js';
+import { isPaceAlert, type UsagePace } from '../usage-pace.js';
 
 export const RESET = '\x1b[0m';
 
@@ -148,11 +148,24 @@ export function getQuotaColor(
   return resolveAnsi(colors?.usage, BRIGHT_BLUE);
 }
 
-/** ` ▲` in the pace colour for amber/red pace; empty otherwise. */
-export function paceMarker(pace: UsagePace | null, colors?: Partial<HudColorOverrides>): string {
-  if (pace === 'critical') return ` ${critical('▲', colors)}`;
-  if (pace === 'warning') return ` ${colorize('▲', resolveAnsi(colors?.usageWarning, BRIGHT_MAGENTA))}`;
-  return '';
+/**
+ * A usage window's percentage (or remaining percentage) in its quota colour,
+ * followed by a ▲ in the pace colour when pace is amber/red.
+ */
+export function formatQuotaPercent(
+  percent: number | null,
+  colors?: Partial<HudColorOverrides>,
+  mode: UsageValueMode = 'percent',
+  pace: UsagePace | null = null,
+): string {
+  if (percent === null) {
+    return label('--', colors);
+  }
+  const color = getQuotaColor(percent, colors, pace);
+  const displayPercent = mode === 'remaining' ? Math.max(0, 100 - percent) : percent;
+  // The marker takes the pace's own colour, which the percent band may outrank.
+  const marker = isPaceAlert(pace) ? ` ${colorize('▲', getQuotaColor(0, colors, pace))}` : '';
+  return `${color}${displayPercent}%${RESET}${marker}`;
 }
 
 export function quotaBar(
