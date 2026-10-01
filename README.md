@@ -217,7 +217,7 @@ Simplified and Traditional Chinese HUD labels are available as explicit opt-ins.
 | `display.usageCompact` | boolean | false | Display usage in a shorter text form such as `5h: 25% (1h 30m)`; takes precedence over `display.usageBarEnabled` |
 | `display.showResetLabel` | boolean | true | Show the `resets in` prefix before usage countdowns |
 | `display.showModelScopedUsage` | boolean | true | Show the per-model weekly windows (`model_scoped`, e.g. Fable), whether they arrive on stdin or from the external usage snapshot. Set to `false` to render the usage line as if the payload carried none of them |
-| `display.usagePace` | boolean | false | Colour each usage window by consumption pace and mark amber/red pace with `▲`: amber when on track to end the window at 90% or more of the limit, red when on track to run out before it resets. An amber/red weekly window shows even below `display.sevenDayThreshold`, and any amber/red window keeps the usage line visible below `display.usageThreshold` |
+| `display.usagePace` | boolean | false | Colour usage windows amber or red, marked `▲`, when they are on track to run out before they reset |
 | `display.timeFormat` | `relative` \| `absolute` \| `both` \| `elapsed` \| `elapsedAndAbsolute` | `relative` | How usage-window time is shown: countdown only (`resets in 2h 30m`), wall-clock reset (`resets at 14:30`), both, elapsed window percentage (`53% elapsed`), or elapsed plus wall-clock reset |
 | `display.hourCycle` | `auto` \| `h11` \| `h12` \| `h23` \| `h24` | `auto` | Hour cycle for wall-clock reset times (`absolute`/`both`/`elapsedAndAbsolute` modes). `auto` defers to the system locale; `h23` forces 24-hour time (`14:30`) regardless of locale |
 | `display.showClockSeconds` | boolean | false | Show seconds in wall-clock reset times, e.g. `at 14:30:07` |
@@ -335,13 +335,13 @@ Set `display.usageCompact` to `true` if you want the shorter usage-only form, fo
 
 Set `display.showModelScopedUsage` to `false` to hide the per-model weekly windows (e.g. Fable). The usage line then renders exactly as it would for an account that has none: the 5h/7d windows stay, snapshot windows are hidden along with the stdin ones, and a hidden window no longer counts toward a configured usage threshold, so it can no longer keep the line on screen by itself.
 
-Set `display.usagePace` to `true` to see when you are using a window faster than it refills. Pace projects the used percentage in a straight line to the window's reset: amber (`colors.usageWarning`) once you are on track to end the window at 90% or more of the limit, red (`colors.critical`) once you are on track to run out before it resets. An amber or red window gets a `▲` after its percentage, and its bar and percentage take the pace colour when that is more severe than the usage colour:
+Set `display.usagePace` to `true` to flag windows you are using faster than they refill. Pace projects the used percentage in a straight line to the reset: amber (`colors.usageWarning`) when on track to end at 90% or more, red (`colors.critical`) when on track to run out first. Either adds a `▲`:
 
 ```
 Context █████░░░░░ 45% │ Usage ███████░░░ 70% ▲ (resets in 2h 30m)
 ```
 
-Pace stays neutral below 10% used, so a short burst at the start of a window does not flag. It covers the 5h, 7-day, and per-model weekly windows. An amber or red weekly window is shown even below `display.sevenDayThreshold`, and any amber or red window keeps the usage line on screen even below `display.usageThreshold`.
+Windows under 10% used stay neutral. An amber or red window stays visible even below `display.usageThreshold` and `display.sevenDayThreshold`.
 
 ### Security Notes
 

@@ -431,7 +431,6 @@ function formatCompactWindowPart(
     : `${styledLabel} ${usageDisplay}`;
 }
 
-
 function formatUsageWindowPart({
   label: windowLabel,
   percent,

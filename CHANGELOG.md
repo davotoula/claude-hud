@@ -5,7 +5,7 @@ All notable changes to Claude HUD will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- `display.usagePace` option to colour usage windows by consumption pace and mark amber/red pace with `▲`: amber when on track to end the window at 90% or more of the limit, red when on track to run out before it resets. An amber/red weekly window shows below `display.sevenDayThreshold`, and any amber/red window keeps the usage line visible below `display.usageThreshold` (#778).
+- `display.usagePace` option to colour usage windows amber or red, marked `▲`, when they are on track to run out before they reset (#779).
 - `display.showDailyCost` option to show today's cumulative spend across sessions (`Today $12.34`), accumulated from the native stdin `cost.total_cost_usd` into a per-day ledger that resets at local midnight (#695).
 
 ### Fixed

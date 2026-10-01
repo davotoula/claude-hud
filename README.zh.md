@@ -202,7 +202,7 @@ Claude Code → stdin JSON → claude-hud → stdout → 在终端中显示
 | `display.usageCompact` | boolean | false | 以较短的文本形式显示使用率，如 `5h: 25% (1h 30m)`；优先于 `display.usageBarEnabled` |
 | `display.showResetLabel` | boolean | true | 在使用率倒计时前显示 `resets in` 前缀 |
 | `display.showModelScopedUsage` | boolean | true | 显示按模型每周窗口（`model_scoped`，例如 Fable），无论其来自 stdin 还是外部用量快照。设为 `false` 后，使用率行的渲染效果等同于负载中本就没有这些窗口 |
-| `display.usagePace` | boolean | false | 按消耗速度为每个使用率窗口着色，并用 `▲` 标记琥珀色/红色速度：按当前速度到窗口结束时将用到限额的 90% 及以上时为琥珀色，将在重置前用尽时为红色。琥珀色/红色的每周窗口即使低于 `display.sevenDayThreshold` 也会显示，且任何琥珀色/红色窗口在低于 `display.usageThreshold` 时仍会保持使用率行可见 |
+| `display.usagePace` | boolean | false | 当使用率窗口按当前速度会在重置前用尽时，以琥珀色或红色显示并标记 `▲` |
 | `display.timeFormat` | `relative` \| `absolute` \| `both` \| `elapsed` \| `elapsedAndAbsolute` | `relative` | 控制使用率窗口时间的显示方式：仅倒计时（`resets in 2h 30m`）、墙钟重置时间（`resets at 14:30`）、两者同时显示、窗口已过百分比（`53% elapsed`），或已过百分比加墙钟重置时间 |
 | `display.hourCycle` | `auto` \| `h11` \| `h12` \| `h23` \| `h24` | `auto` | 墙钟重置时间（`absolute`/`both`/`elapsedAndAbsolute` 模式）的时制。`auto` 跟随系统区域设置；`h23` 强制使用 24 小时制（`14:30`），不受区域设置影响 |
 | `display.showClockSeconds` | boolean | false | 在墙钟重置时间中显示秒数，如 `at 14:30:07` |
@@ -312,13 +312,13 @@ ClaudeHUD 优先使用官方 statusline stdin 负载中的使用率数据。如�
 
 将 `display.showModelScopedUsage` 设为 `false` 可隐藏按模型每周窗口（例如 Fable）。此后使用率行的渲染效果，与该账号本就没有这些窗口时完全一致：5h/7d 窗口保留，来自外部快照的窗口会与 stdin 的一并隐藏，且被隐藏的窗口不再计入已配置的使用率阈值，因此无法再单独让该行保持显示。
 
-将 `display.usagePace` 设为 `true`，可在消耗速度快于窗口恢复速度时得到提示。速度按已用百分比线性推算到窗口重置时刻：按当前速度到窗口结束时将用到限额的 90% 及以上时显示琥珀色（`colors.usageWarning`），将在重置前用尽时显示红色（`colors.critical`）。琥珀色或红色窗口会在百分比后显示 `▲`，且当速度颜色比使用率颜色更严重时，进度条和百分比采用速度颜色：
+将 `display.usagePace` 设为 `true`，可标记消耗快于恢复的窗口。速度按已用百分比线性推算到重置时刻：预计用到 90% 及以上时显示琥珀色（`colors.usageWarning`），预计在重置前用尽时显示红色（`colors.critical`），两者都会加上 `▲`：
 
 ```
 Context █████░░░░░ 45% │ Usage ███████░░░ 70% ▲ (resets in 2h 30m)
 ```
 
-已用低于 10% 时速度保持中性，因此窗口开始时的短暂高峰不会触发提示。该功能覆盖 5h、7 天以及按模型每周窗口。琥珀色或红色的每周窗口即使低于 `display.sevenDayThreshold` 也会显示，且任何琥珀色或红色窗口在低于 `display.usageThreshold` 时仍会让使用率行保持显示。
+已用低于 10% 的窗口保持中性。琥珀色或红色窗口即使低于 `display.usageThreshold` 和 `display.sevenDayThreshold` 也会显示。
 
 **前提条件：**
 - Claude Code 必须在当前会话的 stdin 上包含订阅用户 `rate_limits` 数据
